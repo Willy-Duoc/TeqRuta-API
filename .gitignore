@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Flask / base de datos
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# Entorno
+.env
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Contexto académico (no forma parte del API)
+Pautas de contexto/
