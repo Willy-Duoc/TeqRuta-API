@@ -2,9 +2,13 @@
 
     python run.py
 
-Luego expón este puerto con Ngrok:
+Por defecto escucha solo en 127.0.0.1 para que el puerto interno no quede
+expuesto en la red. La salida pública se gestiona con Ngrok:
 
-    ngrok http 5000
+    python scripts/tunel.py iniciar
+
+Si de verdad necesitas exponer el puerto en la LAN (sin túnel), usa
+HOST=0.0.0.0 y idealmente TRUST_PROXY=false.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ app = create_app()
 if __name__ == "__main__":
     debug = os.getenv("FLASK_DEBUG", "true").strip().lower() in {"1", "true", "yes", "on"}
     app.run(
-        host=os.getenv("HOST", "0.0.0.0"),
-        port=int(os.getenv("PORT", "5000")),
+        host=app.config.get("HOST", "127.0.0.1"),
+        port=int(app.config.get("PORT", 5000)),
         debug=debug,
     )

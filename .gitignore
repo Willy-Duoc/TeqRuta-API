@@ -17,6 +17,12 @@ instance/
 # Entorno
 .env
 
+# Túnel / herramientas locales
+.tools/
+.run/
+.ngrok-url
+ngrok.log
+
 # Editores / SO
 .vscode/
 .idea/

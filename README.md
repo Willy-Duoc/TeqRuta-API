@@ -1,23 +1,116 @@
 # TeqRuta API
 
-API REST externa desarrollada en **Flask** para la aplicación nativa Android **TeqRuta** (Kotlin + Jetpack Compose + MVVM) del caso **TEQMED SpA** (DSY1105 – Duoc UC).
+API REST en **Flask** para la app Android **TeqRuta** (Kotlin + Jetpack Compose) del caso
+**TEQMED SpA** (DSY1105 – Duoc UC). Centraliza autenticación JWT, sincronización
+offline-first de viajes, cálculo de costos, aprobación por jefatura, reportes,
+mantenedores de flota/destinos/tarifas y tarifas de combustible.
 
-La API centraliza la validación de viajes, el cálculo de costos de movilización, la aprobación por jefatura, los reportes financieros y los mantenedores de flota/destinos/tarifas. Se expone al dispositivo Android mediante **Ngrok**, que redirige un dominio HTTPS público hacia el servidor Flask local.
+Se publica al dispositivo mediante **Ngrok**: Flask queda escuchando solo en
+`127.0.0.1:5000` y el túnel entrega una URL **HTTPS** sin exponer el puerto interno.
 
-Repositorio de la app móvil: <https://github.com/hanspwd/TeqRuta.git>  
-Repositorio de esta API: <https://github.com/Willy-Duoc/API-TeqRuta.git>
+- **Repositorio de esta API:** <https://github.com/Willy-Duoc/TeqRuta-API>
+- **Repositorio de la app:** <https://github.com/hanspwd/TeqRuta>
+- **Documento de integración de la app:** [`TeqRuta/docs/PREPARACION_API.md`](https://github.com/hanspwd/TeqRuta/blob/master/docs/PREPARACION_API.md)
 
 ---
 
-## 1. Contexto del caso
+## 1. Inicio rápido: de un clon a la app funcionando
 
-TEQMED SpA realiza traslados diarios desde Concepción a clínicas, hospitales y centros de diálisis del Gran Concepción, Chillán, Los Ángeles y Temuco. Hoy el gasto de movilización se estima en libreta, lo que impide:
+### 1.1 Estructura recomendada
 
-- conocer el costo real por cliente, técnico o vehículo;
-- verificar la distancia declarada frente a la distancia oficial;
-- evitar duplicidades y diferencias entre lo declarado y lo autorizado.
+Clona ambos repositorios en la misma carpeta, manteniendo los nombres:
 
-TeqRuta digitaliza el registro en terreno (modo offline-first) y esta API entrega la **fuente única de verdad** para tarifas y cálculos, con trazabilidad y control por roles.
+```text
+teqruta/
+├── TeqRuta-API/   # backend Flask
+└── TeqRuta/       # app Android
+```
+
+```bash
+mkdir teqruta && cd teqruta
+git clone https://github.com/Willy-Duoc/TeqRuta-API.git
+git clone https://github.com/hanspwd/TeqRuta.git
+```
+
+### 1.2 Preparar la API
+
+Requisitos: **Python 3.10+**, `make`, `curl`, `tar`/`unzip` y una cuenta gratuita de
+Ngrok. En Windows se recomienda **WSL**.
+
+```bash
+cd TeqRuta-API
+make setup
+```
+
+`make setup`:
+
+1. crea `.venv` e instala `requirements-dev.txt`;
+2. descarga el agente Ngrok en `.tools/` si no existe uno en el sistema;
+3. crea `.env` desde `.env.example` con `SECRET_KEY` y `JWT_SECRET_KEY` aleatorios;
+4. si definiste `NGROK_AUTHTOKEN` en el entorno, lo copia al `.env`.
+
+Obtén tu token en <https://dashboard.ngrok.com/get-started/your-authtoken> y edita
+`.env`:
+
+```dotenv
+NGROK_AUTHTOKEN=tu_token_real
+# Opcional pero muy recomendado para que la URL no cambie:
+NGROK_DOMAIN=tu-dominio.ngrok-free.dev
+```
+
+También puedes evitar la edición manual:
+
+```bash
+NGROK_AUTHTOKEN=tu_token_real make publicar
+```
+
+### 1.3 Publicar y verificar
+
+```bash
+make publicar
+make smoke
+make estado
+```
+
+`make publicar` levanta Flask en loopback, crea el túnel, valida `/api/health`, guarda
+la URL pública y actualiza `../TeqRuta/local.properties` para que Gradle la embeba.
+
+Salida esperada:
+
+```text
+====================================================================
+  TeqRuta API publicada con Ngrok
+====================================================================
+  URL pública : https://mi-dominio.ngrok-free.dev
+  Destino     : http://127.0.0.1:5000 (solo loopback)
+  Health      : https://mi-dominio.ngrok-free.dev/api/health
+  Puerto      : puerto 5000 solo responde en loopback
+  Android     : /ruta/teqruta/TeqRuta/local.properties
+====================================================================
+```
+
+### 1.4 Abrir la app
+
+```bash
+cd ../TeqRuta
+./gradlew :app:printApiBaseUrl    # debe mostrar la URL HTTPS del túnel
+./gradlew :app:installDebug       # o abrir el proyecto en Android Studio
+```
+
+Con el emulador o dispositivo listo, inicia sesión con `tecnico@teqmed.cl` /
+`tecnico123`. Si la app está en otra ruta, publica con:
+
+```bash
+TEQRUTA_APP_DIR=/ruta/a/TeqRuta make publicar
+```
+
+### 1.5 Detener
+
+```bash
+make detener
+```
+
+Cierra Ngrok y el Flask iniciado por el script. No borra la base de datos ni el `.env`.
 
 ---
 
@@ -25,38 +118,42 @@ TeqRuta digitaliza el registro en terreno (modo offline-first) y esta API entreg
 
 | Capa | Tecnología | Responsabilidad |
 |---|---|---|
-| Cliente | Android Kotlin, Jetpack Compose, MVVM, Room | Registro offline, cámara, cola de viajes pendientes |
-| Túnel | **Ngrok** | Exponer `localhost:5000` como URL HTTPS pública |
-| API | **Flask 3 + Blueprints** | Auth, Viajes, Reportes y Mantenedores |
-| Persistencia | SQLAlchemy (SQLite por defecto / PostgreSQL en producción) | Usuarios, vehículos, destinos, tarifas, viajes, notificaciones |
-| Seguridad | JWT (PyJWT) + Bcrypt + RBAC | Token en cada petición y permisos por rol |
-| Integración externa | API pública de precios de combustible | Tarifa diaria actualizable con sobreescritura manual |
+| Cliente | Android Kotlin, Compose, MVVM, Room | Registro offline, cámara, cola de pendientes |
+| Túnel | Ngrok | HTTPS público hacia `127.0.0.1:5000` |
+| API | Flask 3 + Blueprints | Auth, viajes, reportes y mantenedores |
+| Persistencia | SQLAlchemy (SQLite/PostgreSQL) | Usuarios, flota, destinos, tarifas, viajes |
+| Seguridad | JWT + Bcrypt + RBAC | Token por petición y permisos por rol |
+| Externo | Precio de combustible (CNE/AhorraHogar) | Tarifa diaria con *fallback* |
 
-### Blueprints
+### Blueprints y módulos
 
-```
+```text
 app/
-├── auth/          → /api/auth         (login, me, logout, config pública)
-├── viajes/        → /api/viajes       (sync, CRUD, aprobación)
-├── reportes/      → /api/reportes     (dashboard, CSV, desviaciones)
-├── mantenedores/  → /api/mantenedores (vehículos, destinos, usuarios, tarifas)
-├── services/      → motor de costos + cliente de API externa de combustible
-├── models.py      → entidades SQLAlchemy
-├── serializers.py → JSON camelCase compatible con Kotlin
-├── security.py    → JWT, Bcrypt y decoradores RBAC
-└── errors.py      → respuestas JSON uniformes
+├── api.py               # blueprint raíz, / y /api/health
+├── auth/                # /api/auth
+├── viajes/              # /api/viajes
+├── reportes/            # /api/reportes
+├── mantenedores/        # /api/mantenedores
+├── services/            # costos + precio de combustible
+├── models.py            # entidades SQLAlchemy
+├── serializers.py       # JSON camelCase para Kotlin
+├── security.py          # JWT, Bcrypt y decoradores RBAC
+├── seed.py              # datos demo
+├── config.py            # configuración por entorno
+└── errors.py            # respuestas JSON uniformes
 ```
 
-### Roles (RBAC)
+### Roles
 
-| Rol | Permisos principales |
+| Rol | Permisos |
 |---|---|
-| `tecnico` | Sincroniza sus propios viajes, consulta destinos y su historial |
-| `jefe` | Ve todos los viajes, aprueba u observa gastos, revisa desviaciones |
-| `gerencia` | Reportes financieros, métricas y exportación CSV |
-| `admin` | ABM de vehículos, destinos, usuarios y tarifas; también aprueba |
+| `tecnico` | Sincroniza y consulta sus viajes, destinos y tarifa |
+| `jefe` | Ve todos los viajes, aprueba u observa, revisa desviaciones |
+| `gerencia` | Reportes financieros y exportación CSV |
+| `admin` | ABM de flota, destinos, usuarios y tarifas; también aprueba |
 
-Toda petición excepto `/`, `/api/health`, `/api/auth/login`, `/api/auth/register` y `/api/auth/config` requiere:
+Rutas públicas: `/`, `/api/health`, `/api/auth/login`, `/api/auth/register` y
+`/api/auth/config`. El resto exige:
 
 ```http
 Authorization: Bearer <access_token>
@@ -64,145 +161,207 @@ Authorization: Bearer <access_token>
 
 ---
 
-## 3. Requisitos previos
+## 3. Estructura del repositorio
 
-- Python 3.10 o superior
-- pip y entorno virtual
-- [Ngrok](https://ngrok.com/download) (para conexión desde Android/emulador)
-- Opcional: PostgreSQL si se despliega en producción
+```text
+TeqRuta-API/
+├── app/
+│   ├── auth/                # login, perfil y config pública
+│   ├── viajes/              # sync, CRUD y aprobación
+│   ├── reportes/            # métricas, desviaciones y CSV
+│   ├── mantenedores/        # vehículos, destinos, usuarios y tarifas
+│   ├── services/            # cálculo de costos y combustible
+│   ├── api.py               # health e índice
+│   ├── config.py            # variables de entorno
+│   ├── models.py            # SQLAlchemy
+│   ├── security.py          # JWT/Bcrypt/RBAC
+│   ├── seed.py              # datos demo
+│   └── serializers.py
+├── scripts/
+│   ├── tunel.py             # orquesta Flask + Ngrok + URL de la app
+│   ├── instalar_ngrok.sh    # descarga el agente en .tools/
+│   └── preparar_env.py      # genera .env con secretos aleatorios
+├── tests/                   # pytest (sin red)
+├── Makefile                 # setup, test, publicar, smoke, detener
+├── run.py                   # servidor de desarrollo
+├── wsgi.py                  # entrada para Gunicorn
+├── requirements.txt
+├── requirements-dev.txt
+└── .env.example
+```
+
+Archivos **no versionados**: `.env`, `.venv/`, `.tools/`, `.run/`, `.ngrok-url`,
+`instance/`, bases SQLite, cachés y logs.
 
 ---
 
-## 4. Instalación y configuración
+## 4. Requisitos
+
+- Python **3.10 o superior** (probado con 3.14).
+- `pip`, `venv`, `make`, `curl`, `tar`/`unzip`.
+- Cuenta gratuita de [Ngrok](https://ngrok.com) y su authtoken.
+- Opcional: Android Studio + SDK 37 para la app.
+- Opcional: PostgreSQL y `psycopg[binary]` para producción.
+- Sistema recomendado: Linux, macOS o WSL. El orquestador usa procesos POSIX; en
+  Windows nativo ejecuta los comandos dentro de WSL.
+
+---
+
+## 5. Configuración
+
+### 5.1 Crear `.env`
 
 ```bash
-git clone https://github.com/Willy-Duoc/API-TeqRuta.git
-cd API-TeqRuta
-
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# Linux / macOS
-source .venv/bin/activate
-
-pip install -r requirements-dev.txt
-copy .env.example .env      # Windows
-# cp .env.example .env      # Linux / macOS
+make setup            # recomendado: crea .env con secretos aleatorios
+# o manualmente:
+cp .env.example .env
 ```
 
-### Variables de entorno principales
+`.env` está ignorado por Git y `make setup` le asigna permisos `600`. **Nunca** lo
+subas al repositorio.
+
+### 5.2 Variables principales
 
 | Variable | Default | Descripción |
 |---|---|---|
+| `HOST` | `127.0.0.1` | Interfaz de Flask; loopback para que Ngrok sea la única salida |
 | `PORT` | `5000` | Puerto local de Flask |
-| `FLASK_DEBUG` | `true` | Modo recarga en desarrollo |
-| `SECRET_KEY` | valor dev | Clave de Flask |
-| `JWT_SECRET_KEY` | `SECRET_KEY` | Secreto para firmar tokens (cambiar en producción) |
-| `JWT_EXPIRE_HOURS` | `8` | Vigencia del token (jornada del técnico) |
-| `DATABASE_URL` | `sqlite:///teqruta.db` | Cadena SQLAlchemy |
-| `SEED_DEMO_USERS` | `true` | Carga usuarios/flota/destinos de ejemplo |
-| `FUEL_PRICE_URL` | `https://ahorrahogar.cl/datos/datos.json` | Fuente pública de precios (datos CNE) |
-| `FUEL_REGION_CODE` | `8` | Región usada (8 = Biobío) |
-| `FUEL_PRICE_CACHE_HOURS` | `24` | Frecuencia de refresco (una vez al día) |
-| `FUEL_DEFAULT_PRICE` | `1597` | Precio de respaldo si la fuente falla |
-| `DEFAULT_RENDIMIENTO_KM_L` | `10` | Rendimiento por defecto si el vehículo no existe |
-| `DESVIACION_UMBRAL_PCT` | `10` | Alerta cuando declarada vs oficial supera este % |
+| `FLASK_DEBUG` | `false` | En `.env.example`; `tunel.py` siempre lo fuerza a `false` |
+| `TRUST_PROXY` | `true` en loopback | Usa `X-Forwarded-Proto/Host/For` de Ngrok |
+| `SECRET_KEY` | generado por setup | Clave de Flask |
+| `JWT_SECRET_KEY` | generado por setup | Firma de JWT (mínimo 32 bytes) |
+| `JWT_EXPIRE_HOURS` | `8` | Vigencia del token |
+| `DATABASE_URL` | `sqlite:///teqruta.db` | SQLAlchemy; SQLite por defecto |
+| `SEED_DEMO_USERS` | `true` | Carga usuarios/flota/destinos demo |
+| `CORS_ORIGINS` | `*` | Orígenes permitidos; restringir en producción |
+| `PUBLIC_BASE_URL` | vacío | URL canónica opcional para enlaces |
+| `NGROK_AUTHTOKEN` | vacío | Token de Ngrok (obligatorio para publicar) |
+| `NGROK_DOMAIN` | vacío | Dominio estático de Ngrok (recomendado) |
+| `TEQRUTA_APP_DIR` | `../TeqRuta` | Ruta del proyecto Android |
+| `FUEL_PRICE_URL` | AhorraHogar/CNE | Fuente de precios de combustible |
+| `FUEL_REGION_CODE` | `8` | Región (8 = Biobío) |
+| `FUEL_PRICE_CACHE_HOURS` | `24` | Refresco máximo de tarifa |
+| `FUEL_DEFAULT_PRICE` | `1597` | Precio de respaldo |
+| `DEFAULT_RENDIMIENTO_KM_L` | `10` | Rendimiento por defecto |
+| `DESVIACION_UMBRAL_PCT` | `10` | Umbral de alerta de desviación |
 
-> El archivo SQLite se crea automáticamente en la carpeta `instance/`.
-
----
-
-## 5. Ejecución local
-
-```bash
-python run.py
-```
-
-También es válido:
-
-```bash
-flask --app wsgi run --host 0.0.0.0 --port 5000
-```
-
-Verificación rápida:
-
-- <http://127.0.0.1:5000/> → información del API
-- <http://127.0.0.1:5000/api/health> → `{"status":"ok","database":"ok"}`
-
-Producción (Gunicorn):
-
-```bash
-gunicorn --bind 0.0.0.0:5000 --workers 2 wsgi:app
-```
+La base SQLite se crea en `instance/` al iniciar. Para reiniciar datos demo, detén la
+API y elimina `instance/teqruta.db`.
 
 ---
 
-## 6. Conexión con la app Android mediante Ngrok
+## 6. Publicación con Ngrok
 
-Ngrok crea un túnel HTTPS desde Internet hacia tu Flask local, sin desplegar servidores.
-
-### 6.1 Pasos
+### 6.1 Comandos
 
 ```bash
-# 1. Autenticación única (opcional pero recomendado)
-ngrok config add-authtoken TU_TOKEN_DE_NGROK
+make setup       # una vez: venv, dependencias, Ngrok y .env
+make publicar    # Flask loopback + túnel + health + URL en local.properties
+make estado      # URL, PIDs, health y comprobación del puerto oculto
+make smoke       # 12 verificaciones E2E contra la URL pública
+make smoke-local # 12 verificaciones contra http://127.0.0.1:5000
+make detener     # cierra Ngrok y Flask
+```
 
-# 2. Iniciar Flask
-python run.py
+El script `scripts/tunel.py`:
 
-# 3. En otra terminal, exponer el puerto
+1. carga `.env` y valida el token;
+2. arranca Flask con `HOST=127.0.0.1` y `FLASK_DEBUG=false`;
+3. crea una configuración temporal de Ngrok con permisos `600` para no exponer el
+   token en `ps`;
+4. obtiene la URL HTTPS y espera `GET /api/health`;
+5. guarda `.ngrok-url` y el puerto usado en `.run/`;
+6. escribe `teqrutaApiBaseUrl` en `local.properties` de la app;
+7. comprueba que el puerto no responda desde la IP de LAN.
+
+### 6.2 URL fija vs. aleatoria
+
+El plan gratuito puede entregar una URL distinta en cada inicio. Para un despliegue
+estable:
+
+1. Reserva un dominio estático en Ngrok.
+2. Define `NGROK_DOMAIN=tu-dominio.ngrok-free.dev` en `.env`.
+3. Publica con `make publicar`.
+
+Con dominio fijo, el APK compilado sigue funcionando entre reinicios. Sin dominio fijo,
+recompila la app cada vez que cambie la URL.
+
+### 6.3 Modo manual
+
+```bash
+# Terminal 1
+HOST=127.0.0.1 python run.py
+
+# Terminal 2
 ngrok http 5000
+# o con dominio reservado:
+ngrok http --url=https://tu-dominio.ngrok-free.dev 5000
 ```
 
-Ngrok mostrará algo como:
+La app debe apuntar a la URL HTTPS resultante (`local.properties`,
+`TEQRUTA_API_BASE_URL` o `-PteqrutaApiBaseUrl`).
 
-```text
-Forwarding  https://a1b2-c3d4-5678.ngrok-free.app -> http://localhost:5000
+### 6.4 Producción con Gunicorn
+
+```bash
+gunicorn --bind 127.0.0.1:5000 --workers 2 wsgi:app
 ```
 
-### 6.2 Configuración en Kotlin
+Mantén Gunicorn en loopback detrás de Ngrok, Nginx o un reverse proxy con TLS. Si
+cambias a PostgreSQL:
 
-Usa la URL **HTTPS** (Android bloquea tráfico cleartext por defecto) y que termine en `/`:
-
-```kotlin
-const val BASE_URL = "https://a1b2-c3d4-5678.ngrok-free.app/"
-const val NGROK_SKIP_BROWSER_WARNING = true // cabecera para el plan free
+```bash
+pip install "psycopg[binary]"
+# .env
+DATABASE_URL=postgresql+psycopg://usuario:clave@host:5432/teqruta
 ```
 
-En el interceptor de OkHttp:
+---
 
-```kotlin
-addInterceptor { chain ->
-    val request = chain.request().newBuilder()
-        .header("Authorization", "Bearer $token")
-        .header("Ngrok-Skip-Browser-Warning", "1")
-        .build()
-    chain.proceed(request)
-}
+## 7. Conexión con la app Android
+
+La app resuelve la URL en este orden:
+
+1. `-PteqrutaApiBaseUrl=https://.../`
+2. variable `TEQRUTA_API_BASE_URL`
+3. `local.properties` → `teqrutaApiBaseUrl=...`
+4. fallback `http://10.0.2.2:5000/` (solo emulador, API Flask en el host)
+
+Comprueba la URL embebida:
+
+```bash
+cd ../TeqRuta
+./gradlew :app:printApiBaseUrl
 ```
 
-Añade el permiso al `AndroidManifest.xml`:
+Para un teléfono físico usa siempre la URL HTTPS de Ngrok. El cliente OkHttp ya envía
+`Ngrok-Skip-Browser-Warning: 1`, `Accept: application/json` y el `Bearer` cuando hay
+sesión. La app no necesita configuración de red adicional.
 
-```xml
-<uses-permission android:name="android.permission.INTERNET" />
+Pruebas de la app:
+
+```bash
+cd ../TeqRuta
+./gradlew :app:testDebugUnitTest
+./gradlew :app:assembleDebug
 ```
 
-> **Importante:** en el plan gratuito la URL cambia cada vez que se reinicia Ngrok. Actualiza `BASE_URL` en la app o usa un dominio reservado:
-> `ngrok http --domain=teqruta.ngrok-free.app 5000`.
+La prueba instrumentada contra el túnel se describe en el
+[README de la app](https://github.com/hanspwd/TeqRuta#7-compilar-probar-e-instalar).
 
-### 6.3 Flujo offline-first
+### Flujo offline-first
 
-1. El técnico registra el viaje sin señal → Room lo guarda con `sincronizado = false` y su `uuid`.
-2. `NetworkHelper.isOnlineFlow` detecta conexión (o `WorkManager` periódicamente).
-3. El ViewModel envía `POST /api/viajes/sync` con la cola pendiente.
-4. El backend valida los UUID: los nuevos se insertan y calculan; los repetidos se ignoran.
+1. Sin señal, Room guarda el viaje con `sincronizado = false` y un UUID.
+2. `SyncWorker` o el ViewModel detectan conexión.
+3. `POST /api/viajes/sync` envía el lote con `tecnicoEmail` y `vehiculoPatente`.
+4. El servidor inserta nuevos, ignora duplicados por UUID y rechaza inválidos.
 5. La app marca como sincronizados solo los UUID aceptados.
 
 ---
 
-## 7. Usuarios de demostración
+## 8. Usuarios demo
 
-Se crean automáticamente al iniciar con `SEED_DEMO_USERS=true`.
+Con `SEED_DEMO_USERS=true`:
 
 | Email | Contraseña | Rol |
 |---|---|---|
@@ -211,15 +370,11 @@ Se crean automáticamente al iniciar con `SEED_DEMO_USERS=true`.
 | `gerencia@teqmed.cl` | `gerencia123` | gerencia |
 | `admin@teqmed.cl` | `admin123` | admin |
 
-Ejemplo de login:
-
 ```bash
 curl -X POST http://127.0.0.1:5000/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"tecnico@teqmed.cl","password":"tecnico123"}'
 ```
-
-Respuesta:
 
 ```json
 {
@@ -242,62 +397,68 @@ Respuesta:
 
 ---
 
-## 8. Endpoints
+## 9. Endpoints
 
 ### Autenticación
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
-| POST | `/api/auth/login` | público | Devuelve JWT + perfil |
-| GET | `/api/auth/me` | autenticado | Perfil del token vigente |
-| POST | `/api/auth/logout` | autenticado | Confirma cierre de sesión (JWT stateless) |
-| POST | `/api/auth/register` | público | Registro de técnicos para pruebas |
-| GET | `/api/auth/config` | público | Umbral de desviación y combustible de referencia |
+| POST | `/api/auth/login` | público | JWT + perfil |
+| GET | `/api/auth/me` | autenticado | Perfil del token |
+| POST | `/api/auth/logout` | autenticado | Cierre stateless |
+| POST | `/api/auth/register` | público | Registro de técnicos |
+| GET | `/api/auth/config` | público | Umbral y combustible de referencia |
 
 ### Viajes
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
-| POST | `/api/viajes/sync` | autenticado | Sincronización por lote, idempotente por UUID |
-| POST | `/api/viajes` | autenticado | Crear un viaje |
-| GET | `/api/viajes` | autenticado | Listar (filtros: `estado`, `cliente`, `tecnicoEmail`, `vehiculoPatente`, `desde`, `hasta`, `soloAlertas`, `page`, `per_page`) |
+| POST | `/api/viajes/sync` | autenticado | Sincronización idempotente por UUID |
+| POST | `/api/viajes` | autenticado | Crear viaje |
+| GET | `/api/viajes` | autenticado | Listar con filtros y paginación |
 | GET | `/api/viajes/<uuid>` | autenticado | Detalle |
-| PATCH | `/api/viajes/<uuid>/aprobacion` | jefe, admin | Aprobar u observar |
+| PATCH | `/api/viajes/<uuid>/aprobacion` | jefe/admin | Aprobar u observar |
 | DELETE | `/api/viajes/<uuid>` | admin | Eliminar |
+
+Filtros: `estado`, `cliente`, `tecnicoEmail`, `vehiculoPatente`, `desde`, `hasta`,
+`soloAlertas`, `page`, `per_page`.
 
 ### Reportes
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
-| GET | `/api/reportes/mensual` | gerencia, admin, jefe | Costo total, promedio por visita y desgloses |
-| GET | `/api/reportes/mensual.csv` | gerencia, admin, jefe | Exportación CSV (BOM para Excel) |
-| GET | `/api/reportes/desviaciones` | gerencia, admin, jefe | Viajes sobre el umbral de desviación |
+| GET | `/api/reportes/mensual` | jefe/gerencia/admin | Totales y desgloses |
+| GET | `/api/reportes/mensual.csv` | jefe/gerencia/admin | CSV con BOM para Excel |
+| GET | `/api/reportes/desviaciones` | jefe/gerencia/admin | Viajes sobre el umbral |
 
-Filtros de reporte: `anio`, `mes`, `cliente`, `desde`, `hasta`.
+Filtros: `anio`, `mes`, `cliente`, `desde`, `hasta`.
 
 ### Mantenedores
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
-| GET/POST | `/api/mantenedores/vehiculos` | lectura: todos / escritura: admin | ABM de flota |
-| GET/PUT/DELETE | `/api/mantenedores/vehiculos/<patente>` | admin | Detalle y edición |
-| GET/POST | `/api/mantenedores/destinos` | lectura: todos / escritura: admin | Catastro de clínicas (cache offline) |
-| GET/PUT/DELETE | `/api/mantenedores/destinos/<id>` | admin | Detalle y edición |
-| GET/POST | `/api/mantenedores/usuarios` | admin | ABM de usuarios |
-| GET/PUT/DELETE | `/api/mantenedores/usuarios/<id>` | admin | Detalle y edición |
-| GET | `/api/mantenedores/tarifas` | autenticado | Historial de tarifas |
+| GET/POST | `/api/mantenedores/vehiculos` | lectura: autenticado / escritura: admin | Flota |
+| GET/PUT/DELETE | `/api/mantenedores/vehiculos/<patente>` | admin | Detalle/edición |
+| GET/POST | `/api/mantenedores/destinos` | lectura: autenticado / escritura: admin | Clínicas |
+| GET/PUT/DELETE | `/api/mantenedores/destinos/<id>` | admin | Detalle/edición |
+| GET/POST | `/api/mantenedores/usuarios` | admin | Usuarios |
+| GET/PUT/DELETE | `/api/mantenedores/usuarios/<id>` | admin | Detalle/edición |
+| GET | `/api/mantenedores/tarifas` | autenticado | Historial |
 | GET | `/api/mantenedores/tarifas/vigente?combustible=93` | autenticado | Tarifa activa |
 | PUT | `/api/mantenedores/tarifas/93` | admin | Sobreescritura manual |
-| POST | `/api/mantenedores/tarifas/actualizar` | admin | Refresco forzado desde API externa |
+| POST | `/api/mantenedores/tarifas/actualizar` | admin | Refresco externo |
 
 ---
 
-## 9. Ejemplos de solicitudes
+## 10. Contrato de sincronización
 
-### 9.1 Sincronizar viajes
+```http
+POST /api/viajes/sync
+Content-Type: application/json
+Authorization: Bearer <JWT>
+```
 
 ```json
-POST /api/viajes/sync
 {
   "viajes": [
     {
@@ -330,12 +491,7 @@ Respuesta:
 ```json
 {
   "data": {
-    "resumen": {
-      "recibidos": 1,
-      "insertados": 1,
-      "duplicados": 0,
-      "rechazados": 0
-    },
+    "resumen": { "recibidos": 1, "insertados": 1, "duplicados": 0, "rechazados": 0 },
     "rechazados": [],
     "viajes": [{ "uuid": "1111...", "estado": "insertado" }]
   },
@@ -343,9 +499,11 @@ Respuesta:
 }
 ```
 
-Si hay errores por viaje, el estado HTTP es `207 Multi-Status` y `rechazados` contiene `indice` y `errores`.
+Si hay rechazos por viaje se responde `207 Multi-Status` y `rechazados` incluye
+`indice` y `errores`. Los duplicados por UUID se consideran aceptados para mantener la
+idempotencia.
 
-### 9.2 Aprobar u observar
+### Aprobación
 
 ```json
 PATCH /api/viajes/<uuid>/aprobacion
@@ -354,12 +512,12 @@ PATCH /api/viajes/<uuid>/aprobacion
 
 ```json
 PATCH /api/viajes/<uuid>/aprobacion
-{ "estado": "OBSERVADO", "observacionJefe": "Distancia declarada superior a la oficial" }
+{ "estado": "OBSERVADO", "observacionJefe": "Distancia superior a la oficial" }
 ```
 
-`RECHAZADO` (valor usado en `RoleScreens.kt`) se convierte automáticamente a `OBSERVADO`.
+`RECHAZADO` se normaliza a `OBSERVADO`.
 
-### 9.3 Respuesta de un viaje
+### Respuesta de viaje
 
 ```json
 {
@@ -385,167 +543,97 @@ PATCH /api/viajes/<uuid>/aprobacion
 
 ---
 
-## 10. Motor de cálculo y auditoría
+## 11. Motor de cálculo y tarifas
 
-El cálculo queda **centralizado en el servidor**, no en el dispositivo:
+El cálculo se centraliza en el servidor:
 
 ```text
 distancia declarada = odometroFin - odometroInicio
 costo combustible   = (distancia declarada / rendimiento km/L) * precio $/L
 costo total         = costo combustible + totalMontoPeajes
 desviación %        = (declarada - oficial) / oficial * 100
-alerta              = |desviación| > DESVIACION_UMBRAL_PCT (10%)
+alerta              = |desviación| > DESVIACION_UMBRAL_PCT
 ```
 
-Cada viaje guarda la tarifa usada, su origen (`API_EXTERNA`, `MANUAL` o `FALLBACK`), el rendimiento aplicado y la distancia oficial, por lo que el gasto es **verificable** ante contratos y gerencia.
+Cada viaje guarda tarifa usada, origen (`API_EXTERNA`, `MANUAL`, `FALLBACK`),
+rendimiento y distancia oficial para auditoría.
 
-### Precio de combustible
-
-- Fuente por defecto: <https://ahorrahogar.cl/datos/datos.json> (consolida datos oficiales de la CNE / Bencina en Línea).
-- Se lee `bencina.combustibles["93"].regiones["8"].mediana` (Biobío), con respaldo al promedio nacional.
-- Se actualiza como máximo una vez cada `FUEL_PRICE_CACHE_HOURS` (24 h por defecto).
-- Si la fuente falla, se conserva la última tarifa o se usa `FUEL_DEFAULT_PRICE`, marcando el origen como `FALLBACK`.
-- El administrador puede sobreescribir el valor manualmente desde `/api/mantenedores/tarifas/93`.
-
-Datos de precios: © Comisión Nacional de Energía de Chile, consolidados por AhorraHogar.cl (CC BY 4.0).
-
----
-
-## 11. Integración desde Kotlin (MVVM + Retrofit)
-
-A continuación, un ejemplo mínimo para conectar el `ViajeViewModel` existente con esta API.
-
-### Dependencias
-
-```kotlin
-// app/build.gradle.kts
-implementation("com.squareup.retrofit2:retrofit:2.11.0")
-implementation("com.squareup.retrofit2:converter-gson:2.11.0")
-implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
-```
-
-### DTOs
-
-```kotlin
-data class LoginRequest(val email: String, val password: String)
-
-data class LoginResponse(
-    @SerializedName("access_token") val accessToken: String,
-    @SerializedName("token_type") val tokenType: String,
-    val user: UserDto
-)
-
-data class UserDto(val email: String, val nombre: String, val rol: String)
-
-data class SyncRequest(val viajes: List<ViajeDto>)
-
-data class SyncResponse(val data: SyncData)
-data class SyncData(
-    val resumen: ResumenSync,
-    val viajes: List<ViajeDto>,
-    val rechazados: List<RechazoDto>
-)
-data class ResumenSync(
-    val recibidos: Int, val insertados: Int, val duplicados: Int, val rechazados: Int
-)
-data class RechazoDto(val indice: Int, val errores: List<String>)
-
-data class ViajeDto(
-    val uuid: String,
-    val rutaSeleccionada: String,
-    val odometroInicio: Int,
-    val odometroFin: Int,
-    val totalMontoPeajes: Double,
-    val horaInicio: Long,
-    val horaFin: Long,
-    val tecnicoEmail: String,
-    val vehiculoPatente: String,
-    val estadoAprobacion: String = "PENDIENTE",
-    val costoTotalCalculado: Double? = null,
-    val alertaDesviacion: Boolean? = null
-)
-```
-
-### Servicio Retrofit
-
-```kotlin
-interface TeqRutaApi {
-    @POST("api/auth/login")
-    suspend fun login(@Body body: LoginRequest): LoginResponse
-
-    @GET("api/auth/me")
-    suspend fun me(): UserDto
-
-    @POST("api/viajes/sync")
-    suspend fun sync(@Body body: SyncRequest): SyncResponse
-
-    @GET("api/viajes")
-    suspend fun listar(@Query("estado") estado: String? = null): List<ViajeDto>
-
-    @PATCH("api/viajes/{uuid}/aprobacion")
-    suspend fun aprobar(
-        @Path("uuid") uuid: String,
-        @Body body: Map<String, String>
-    ): ViajeDto
-
-    @GET("api/mantenedores/destinos")
-    suspend fun destinos(): List<DestinoDto>
-}
-```
-
-### ViewModel (extracto)
-
-```kotlin
-fun sincronizarPendientes() = viewModelScope.launch {
-    val pendientes = viajeDao.getViajesPendientes().first()
-    if (pendientes.isEmpty()) return@launch
-
-    val respuesta = api.sync(SyncRequest(pendientes.map { it.toDto() }))
-    viajeDao.marcarComoSincronizados(respuesta.data.viajes.map { it.uuid })
-
-    // El estadoAPROBACION y el costoTotalCalculado vuelven desde la API.
-    respuesta.data.viajes.forEach { viajeDao.actualizarDesdeServidor(it) }
-}
-```
-
-> El repositorio Android actualmente no tiene Retrofit ni permiso `INTERNET`; este API está listo para que el equipo agregue esa capa sin cambiar el contrato de datos: los nombres de campo son idénticos a `Viaje.kt`.
+- Fuente: <https://ahorrahogar.cl/datos/datos.json> (datos CNE).
+- Región por defecto: Biobío (`FUEL_REGION_CODE=8`).
+- Caché máxima: `FUEL_PRICE_CACHE_HOURS` (24 h).
+- Si la fuente falla: última tarifa o `FUEL_DEFAULT_PRICE` con origen `FALLBACK`.
+- Un admin puede forzar refresco o sobreescribir el valor.
 
 ---
 
 ## 12. Pruebas
 
 ```bash
-pytest
+make test        # pytest: 30 pruebas
+make smoke-local # E2E contra 127.0.0.1:5000
+make smoke       # 12 verificaciones E2E contra la URL pública
 ```
 
-Incluye pruebas para:
+Cobertura:
 
-- login JWT, `.me` y RBAC;
+- login JWT, `/me` y RBAC;
 - sincronización idempotente y validaciones;
-- cálculo centralizado de costos y alerta de desviación;
-- aprobación/observación y notificación;
-- reportes y exportación CSV;
+- cálculo centralizado y alerta de desviación;
+- aprobación/observación;
+- reportes y CSV;
 - mantenedores y tarifa manual;
-- consumo de API externa con `requests` mockeado y fallback.
+- API externa de combustible simulada + fallback;
+- `ProxyFix` y cabeceras de seguridad;
+- lectura de URL pública, configuración de Ngrok, generación de `.env` y
+  actualización de `local.properties`;
+- smoke test completo contra un servidor Flask real.
 
-Las pruebas usan SQLite en memoria y desactivan la red, por lo que son deterministas.
+Las pruebas unitarias usan SQLite en memoria y no dependen de Internet. El smoke usa
+HTTP real y elimina el viaje de prueba al terminar.
 
 ---
 
-## 13. Consideraciones de producción
+## 13. Producción: checklist
 
-- Cambiar `SECRET_KEY` y `JWT_SECRET_KEY` por secretos aleatorios largos.
+- Generar `SECRET_KEY` y `JWT_SECRET_KEY` largos y únicos (`make setup` ya lo hace).
 - `SEED_DEMO_USERS=false`.
-- Usar PostgreSQL: `DATABASE_URL=postgresql+psycopg://user:pass@host:5432/teqruta`.
-- Servir siempre por HTTPS (Ngrok o reverse proxy) y restringir `CORS_ORIGINS`.
-- Ejecutar con Gunicorn (2+ workers) detrás de Nginx.
-- Registrar y auditar cambios de tarifa: el historial queda en `tarifas`.
+- PostgreSQL + `psycopg[binary]` y backups.
+- Gunicorn con 2+ workers detrás de Nginx/Ngrok.
+- HTTPS obligatorio; restringir `CORS_ORIGINS`.
+- Mantener Flask/Gunicorn en `127.0.0.1`; nunca publicar el puerto 5000.
+- Con `TRUST_PROXY=true`, no exponer Flask directamente a Internet (un cliente podría
+  falsificar `X-Forwarded-For`).
+- No versionar `.env`, `.run/`, `.tools/` ni bases SQLite.
+- Rotar `NGROK_AUTHTOKEN` si se filtra.
+- Firmar el APK release y distribuir por un canal controlado.
 
 ---
 
-## 14. Contexto académico
+## 14. Solución de problemas
 
-Proyecto desarrollado para la asignatura **Desarrollo de Aplicaciones Móviles (DSY1105)**, Escuela de Informática y Telecomunicaciones, Duoc UC. Uso académico y demostrativo; no se encuentra integrado al ERP contable de TEQMED SpA.
+| Síntoma | Causa / solución |
+|---|---|
+| `Falta NGROK_AUTHTOKEN` | Edita `.env` o usa `NGROK_AUTHTOKEN=... make publicar`. |
+| `Ngrok no está instalado` | `make setup` o `make instalar-ngrok`; también sirve un Ngrok del sistema. |
+| Ngrok no publica URL | Revisa `.run/ngrok.log`; token inválido, dominio ocupado o sin red. |
+| `puerto 5000 ya está en uso` | Detén el proceso previo: `make detener` o `ss -ltnp \| grep 5000`. |
+| Health falla tras publicar | Mira `.run/flask.log`; suele ser una dependencia o error de BD. |
+| La app sigue con URL antigua | Recompila tras `make publicar`; verifica con `:app:printApiBaseUrl`. |
+| Ngrok devuelve HTML | Falta el header `Ngrok-Skip-Browser-Warning` (la app ya lo envía). |
+| Cambia la URL al reiniciar | Configura `NGROK_DOMAIN` estático y recompila una vez. |
+| `make: command not found` | Instala `make` o ejecuta `python scripts/tunel.py ...` directamente. |
+| Windows nativo falla | Usa WSL; el orquestador y el Makefile son POSIX. |
+| Quiero reiniciar datos demo | Detén la API y borra `instance/teqruta.db`. |
+| App no encuentra el proyecto Android | `TEQRUTA_APP_DIR=/ruta/TeqRuta make publicar`. |
+
+---
+
+## 15. Contexto académico
+
+Proyecto de **Desarrollo de Aplicaciones Móviles (DSY1105)**, Escuela de Informática y
+Telecomunicaciones, Duoc UC, para TEQMED SpA.
 
 **Integrantes API:** Williams Contreras.  
 **App Android:** Hans Morales, Martina Norambuena, Williams Contreras.
+
+Uso académico y demostrativo; no está integrado al ERP contable de TEQMED SpA.

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import os
 
-from flask import Flask
+from flask import Flask, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import Config
 from .errors import register_error_handlers
@@ -25,12 +26,30 @@ def create_app(config_object=None) -> Flask:
     except OSError:
         pass
 
+    # Ngrok termina TLS y reenvía X-Forwarded-Proto/Host/For. Sin esto Flask
+    # generaría URLs http:// y vería 127.0.0.1 como cliente.
+    if app.config.get("TRUST_PROXY", True):
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1
+        )
+
     app.json.sort_keys = False
     db.init_app(app)
     cors.init_app(app, origins=app.config["CORS_ORIGINS"])
 
     register_error_handlers(app)
     register_blueprints(app)
+
+    @app.after_request
+    def _cabeceras_seguridad(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        if request.is_secure:
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return response
 
     with app.app_context():
         db.create_all()

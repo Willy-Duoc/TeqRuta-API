@@ -8,6 +8,14 @@ from __future__ import annotations
 
 import os
 from datetime import timedelta
+from pathlib import Path
+
+try:  # python-dotenv es parte de requirements; el fallback mantiene el API usable sin él.
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:  # pragma: no cover - solo si se omite python-dotenv
+    pass
 
 
 def _bool(name: str, default: bool = False) -> bool:
@@ -16,6 +24,15 @@ def _bool(name: str, default: bool = False) -> bool:
 
 class Config:
     """Configuración base."""
+
+    # Servidor: por defecto solo loopback. Ngrok se conecta a 127.0.0.1 y es el
+    # único punto de entrada público; el puerto interno nunca se expone en la LAN.
+    HOST = os.getenv("HOST", "127.0.0.1")
+    PORT = int(os.getenv("PORT", "5000"))
+    # Confiar en X-Forwarded-* solo tiene sentido si el puerto está en loopback
+    # (Ngrok o proxy local). Si se expone en LAN, se desactiva por defecto.
+    TRUST_PROXY = _bool("TRUST_PROXY", HOST in {"127.0.0.1", "localhost", "::1"})
+    PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-teqruta-cambiar")
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
@@ -53,6 +70,9 @@ class TestingConfig(Config):
     """Configuración usada por pytest: sin red y con BD en memoria."""
 
     TESTING = True
+    HOST = "127.0.0.1"
+    PORT = 5000
+    TRUST_PROXY = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     SQLALCHEMY_ENGINE_OPTIONS = {}
     FUEL_PRICE_URL = ""
