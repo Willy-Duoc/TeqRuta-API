@@ -1,0 +1,175 @@
+{% extends "admin/base.html" %}
+{% block title %}Resumen{% endblock %}
+{% block crumb %}Resumen{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Resumen operativo</h1>
+    <p>{{ mes_actual }} · Vista general de viajes, costos y alertas.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="{{ url_for('admin.reportes') }}">Ver reportes</a>
+    <a class="btn btn-primary" href="{{ url_for('admin.viajes', estado='PENDIENTE') }}">Revisar pendientes</a>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat">
+    <div class="label">Viajes totales</div>
+    <div class="value">{{ total_viajes }}</div>
+    <div class="hint">{{ aprobados }} aprobados · {{ observados }} observados</div>
+  </div>
+  <div class="stat warn">
+    <div class="label">Pendientes</div>
+    <div class="value">{{ pendientes }}</div>
+    <div class="hint">Requieren revisión de jefatura</div>
+  </div>
+  <div class="stat danger">
+    <div class="label">Alertas de desviación</div>
+    <div class="value">{{ alertas }}</div>
+    <div class="hint">Pendientes sobre el umbral permitido</div>
+  </div>
+  <div class="stat ok">
+    <div class="label">Costo aprobado</div>
+    <div class="value">{{ costo_aprobado | clp }}</div>
+    <div class="hint">Histórico en CLP</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2>Últimos viajes</h2>
+        <p>Registros sincronizados desde la app Android.</p>
+      </div>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('admin.viajes') }}">Ver todos</a>
+    </div>
+    {% if recientes %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Ruta</th>
+            <th>Técnico</th>
+            <th class="num">Costo</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for viaje in recientes %}
+          <tr>
+            <td class="nowrap small">{{ viaje.hora_inicio | fecha_hora }}</td>
+            <td>
+              <a href="{{ url_for('admin.viaje_detalle', uuid=viaje.uuid) }}">{{ viaje.ruta_seleccionada }}</a>
+              <div class="small muted">{{ viaje.vehiculo_patente }}{% if viaje.alerta_desviacion %} · <span style="color:var(--danger);font-weight:700;">Alerta</span>{% endif %}</div>
+            </td>
+            <td class="small">{{ viaje.tecnico_email }}</td>
+            <td class="num">{{ viaje.costo_total_calculado | clp }}</td>
+            <td><span class="badge {{ viaje.estado_aprobacion | badge }}">{{ viaje.estado_aprobacion }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><strong>Sin viajes todavía</strong>Cuando la app sincronice un viaje aparecerá aquí.</div>
+    {% endif %}
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Mes en curso</h2>
+          <p>Viajes aprobados y costo acumulado.</p>
+        </div>
+      </div>
+      <div class="card-pad">
+        <div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:0;">
+          <div class="stat" style="box-shadow:none;padding:12px;">
+            <div class="label">Viajes aprobados</div>
+            <div class="value" style="font-size:22px;">{{ resumen_mes.resumen.viajesAprobados }}</div>
+          </div>
+          <div class="stat ok" style="box-shadow:none;padding:12px;">
+            <div class="label">Costo total</div>
+            <div class="value" style="font-size:22px;">{{ resumen_mes.resumen.costoTotal | clp }}</div>
+          </div>
+        </div>
+        <div class="kv" style="margin-top:14px;">
+          <dt>Combustible</dt><dd>{{ resumen_mes.resumen.costoCombustible | clp }}</dd>
+          <dt>Peajes</dt><dd>{{ resumen_mes.resumen.totalPeajes | clp }}</dd>
+          <dt>Distancia</dt><dd>{{ resumen_mes.resumen.distanciaTotalKm }} km</dd>
+          <dt>Promedio / visita</dt><dd>{{ resumen_mes.resumen.promedioPorVisita | clp }}</dd>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Top destinos del mes</h2>
+          <p>Por costo aprobado.</p>
+        </div>
+      </div>
+      <div class="card-pad">
+        {% if clientes_mes %}
+        <div class="bar-list">
+          {% for fila in clientes_mes %}
+          <div class="bar-row">
+            <div>
+              <div class="small"><strong>{{ fila.grupo }}</strong></div>
+              <div class="bar-track"><div class="bar-fill" style="width:{{ fila.pct }}%;"></div></div>
+            </div>
+            <div class="num small">{{ fila.costoTotal | clp }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="muted small">Aún no hay viajes aprobados este mes.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Tarifa vigente</h2>
+          <p>Combustible {{ config.COSTO_COMBUSTIBLE_TIPO }} · precio de referencia.</p>
+        </div>
+      </div>
+      <div class="card-pad">
+        {% if tarifa %}
+        <div style="font-size:28px;font-weight:800;letter-spacing:-.02em;">{{ tarifa.precio_litro | clp }} <span class="muted" style="font-size:14px;font-weight:600;">/ litro</span></div>
+        <p class="small muted" style="margin-top:4px;">Origen {{ tarifa.origen }} · vigente desde {{ tarifa.vigente_desde | fecha }}</p>
+        {% else %}
+        <p class="muted small">No hay tarifa activa registrada.</p>
+        {% endif %}
+        <a class="btn btn-secondary btn-sm" href="{{ url_for('admin.tarifas') }}">Gestionar tarifas</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="grid-3" style="margin-top:18px;">
+  <div class="card card-pad">
+    <h3>Usuarios activos</h3>
+    <div class="value" style="font-size:25px;font-weight:800;">{{ usuarios_activos }}</div>
+    <p class="small muted" style="margin:4px 0 0;">Cuentas habilitadas para operar.</p>
+  </div>
+  <div class="card card-pad">
+    <h3>Vehículos activos</h3>
+    <div class="value" style="font-size:25px;font-weight:800;">{{ vehiculos_activos }}</div>
+    <p class="small muted" style="margin:4px 0 0;">Flota disponible para asignación.</p>
+  </div>
+  <div class="card card-pad">
+    <h3>Acceso rápido</h3>
+    <div class="page-actions" style="margin-top:10px;">
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('admin.destinos') }}">Destinos</a>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('admin.vehiculos') }}">Flota</a>
+      {% if es_admin %}<a class="btn btn-secondary btn-sm" href="{{ url_for('admin.usuarios') }}">Usuarios</a>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

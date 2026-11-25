@@ -1,0 +1,70 @@
+{% extends "admin/base.html" %}
+{% block title %}Destinos{% endblock %}
+{% block crumb %}Destinos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Destinos</h1>
+    <p>Clínicas y centros de atención con distancia oficial para el control de desviaciones.</p>
+  </div>
+  {% if es_admin %}
+  <div class="page-actions">
+    <a class="btn btn-primary" href="{{ url_for('admin.destino_nuevo') }}">Nuevo destino</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <form class="filters" method="get" action="{{ url_for('admin.destinos') }}">
+    <div class="field grow">
+      <label for="q">Buscar</label>
+      <input id="q" name="q" type="text" value="{{ q }}" placeholder="Nombre, región o comuna">
+    </div>
+    <button class="btn btn-primary" type="submit">Filtrar</button>
+    <a class="btn btn-ghost" href="{{ url_for('admin.destinos') }}">Limpiar</a>
+  </form>
+
+  {% if items %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Destino</th>
+          <th>Región / comuna</th>
+          <th class="num">Distancia oficial</th>
+          <th>Coordenadas</th>
+          <th>Estado</th>
+          {% if es_admin %}<th></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td><strong>{{ item.nombre }}</strong></td>
+          <td class="small">{{ item.region or '—' }}{% if item.comuna %} · {{ item.comuna }}{% endif %}</td>
+          <td class="num">{{ item.distancia_oficial_km }} km</td>
+          <td class="small mono">
+            {% if item.latitud is not none and item.longitud is not none %}
+            {{ item.latitud }}, {{ item.longitud }}
+            {% else %}—{% endif %}
+          </td>
+          <td><span class="badge {{ 'ok' if item.activo else 'neutral' }}">{{ 'Activo' if item.activo else 'Inactivo' }}</span></td>
+          {% if es_admin %}
+          <td class="nowrap">
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('admin.destino_editar', item_id=item.id) }}">Editar</a>
+            <form method="post" action="{{ url_for('admin.destino_eliminar', item_id=item.id) }}" style="display:inline;" onsubmit="return confirm('¿Eliminar el destino {{ item.nombre }}?');">
+              <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+              <button class="btn btn-danger btn-sm" type="submit">Eliminar</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><strong>Sin destinos</strong>Agrega el primero para que la app pueda calcular desviaciones.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -15,7 +15,7 @@ from ..serializers import (
 )
 from ..services.fuel_price import (
     get_active_tariff,
-    list_tarifas,
+    list_tarifas as listar_tarifas,
     refresh_tariff,
     set_manual_tariff,
 )
@@ -330,8 +330,8 @@ def get_tarifa_vigente():
 
 @bp.get("/tarifas")
 @token_required
-def list_tarifas():
-    return api_ok([tariff_to_json(item) for item in list_tarifas()])
+def list_tariffs():
+    return api_ok([tariff_to_json(item) for item in listar_tarifas()])
 
 
 @bp.post("/tarifas/actualizar")

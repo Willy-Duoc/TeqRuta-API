@@ -1,0 +1,4 @@
+# Dependencias de producción: servidor WSGI y driver PostgreSQL.
+-r requirements.txt
+gunicorn>=23.0,<28.0
+psycopg[binary]>=3.1,<4.0

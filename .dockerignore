@@ -1,0 +1,40 @@
+# Secretos y configuración local: nunca entran a la imagen.
+.env
+.env.*
+!.env.production.example
+*.pem
+*.key
+deploy/certs/
+local.properties
+
+# Entornos virtuales y cachés
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Base de datos local y estado del túnel
+instance/
+*.db
+*.sqlite
+*.sqlite3
+.run/
+.tools/
+.ngrok-url
+ngrok.log
+
+# Control de versiones y documentación innecesaria en runtime
+.git/
+.github/
+.gitignore
+tests/
+Pautas de contexto/
+
+# Editores
+.vscode/
+.idea/
+.DS_Store

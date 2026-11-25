@@ -1,0 +1,68 @@
+{% extends "admin/base.html" %}
+{% block title %}Flota{% endblock %}
+{% block crumb %}Flota{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Flota</h1>
+    <p>Vehículos disponibles, rendimiento y técnico asignado.</p>
+  </div>
+  {% if es_admin %}
+  <div class="page-actions">
+    <a class="btn btn-primary" href="{{ url_for('admin.vehiculo_nuevo') }}">Nuevo vehículo</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <form class="filters" method="get" action="{{ url_for('admin.vehiculos') }}">
+    <div class="field grow">
+      <label for="q">Buscar</label>
+      <input id="q" name="q" type="text" value="{{ q }}" placeholder="Patente, modelo o técnico">
+    </div>
+    <button class="btn btn-primary" type="submit">Filtrar</button>
+    <a class="btn btn-ghost" href="{{ url_for('admin.vehiculos') }}">Limpiar</a>
+  </form>
+
+  {% if items %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Patente</th>
+          <th>Modelo</th>
+          <th class="num">Rendimiento</th>
+          <th class="num">Kilometraje</th>
+          <th>Técnico asignado</th>
+          <th>Estado</th>
+          {% if es_admin %}<th></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td><strong class="mono">{{ item.patente }}</strong></td>
+          <td>{{ item.modelo }}</td>
+          <td class="num">{{ item.rendimiento_km_l }} km/L</td>
+          <td class="num">{{ "{:,}".format(item.kilometraje_actual).replace(",", ".") }} km</td>
+          <td class="small">{{ item.tecnico_email or '—' }}</td>
+          <td><span class="badge {{ 'ok' if item.activo else 'neutral' }}">{{ 'Activo' if item.activo else 'Inactivo' }}</span></td>
+          {% if es_admin %}
+          <td class="nowrap">
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('admin.vehiculo_editar', patente=item.patente) }}">Editar</a>
+            <form method="post" action="{{ url_for('admin.vehiculo_eliminar', patente=item.patente) }}" style="display:inline;" onsubmit="return confirm('¿Eliminar el vehículo {{ item.patente }}?');">
+              <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+              <button class="btn btn-danger btn-sm" type="submit">Eliminar</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><strong>Sin vehículos</strong>Agrega el primero para asignarlo a un técnico.</div>
+  {% endif %}
+</div>
+{% endblock %}

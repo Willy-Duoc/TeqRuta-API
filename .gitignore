@@ -14,8 +14,14 @@ instance/
 *.sqlite
 *.sqlite3
 
-# Entorno
+# Entorno y secretos
 .env
+.env.*
+!.env.example
+!.env.production.example
+
+# Certificados TLS (Nginx)
+deploy/certs/
 
 # Túnel / herramientas locales
 .tools/

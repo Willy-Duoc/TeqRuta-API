@@ -1,0 +1,81 @@
+# Producción: PostgreSQL + Gunicorn + Nginx con TLS.
+#
+#   cp .env.production.example .env.production   # y edita los secretos
+#   make prod-env                                # o genera secretos aleatorios
+#   make prod-config                             # valida la configuración
+#   make prod-up                                 # levanta el stack
+#
+# Solo Nginx publica puertos (80/443). La API y PostgreSQL quedan en la red
+# interna y no son alcanzables desde el host.
+name: teqruta
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-teqruta}
+      POSTGRES_USER: ${POSTGRES_USER:-teqruta}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env.production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    networks:
+      - interna
+
+  api:
+    build:
+      context: .
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-teqruta}:${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env.production}@db:5432/${POSTGRES_DB:-teqruta}
+      HOST: 0.0.0.0
+      PORT: 8000
+      TRUST_PROXY: "true"
+      SESSION_COOKIE_SECURE: "true"
+      AUTO_CREATE_DB: "false"
+      SEED_DEMO_USERS: "false"
+      GUNICORN_BIND: 0.0.0.0:8000
+      FORWARDED_ALLOW_IPS: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - interna
+    # Sin `ports`: la API solo es visible para Nginx dentro de la red interna.
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://127.0.0.1/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - interna
+
+volumes:
+  postgres_data:
+
+networks:
+  interna:
+    driver: bridge

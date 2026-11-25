@@ -1,0 +1,58 @@
+{% extends "admin/base.html" %}
+{% block title %}Usuarios{% endblock %}
+{% block crumb %}Usuarios{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Usuarios</h1>
+    <p>Cuentas con acceso a la app y al panel, roles y vehículo asignado.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-primary" href="{{ url_for('admin.usuario_nuevo') }}">Nuevo usuario</a>
+  </div>
+</div>
+
+<div class="card">
+  {% if items %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Usuario</th>
+          <th>Rol</th>
+          <th>Cargo</th>
+          <th>Vehículo</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>
+            <strong>{{ item.nombre }}</strong>
+            <div class="small muted">{{ item.email }}</div>
+          </td>
+          <td><span class="badge neutral">{{ item.rol }}</span></td>
+          <td class="small">{{ item.cargo or '—' }}</td>
+          <td class="small mono">{{ item.vehiculo_asignado or '—' }}</td>
+          <td><span class="badge {{ 'ok' if item.activo else 'danger' }}">{{ 'Activo' if item.activo else 'Inactivo' }}</span></td>
+          <td class="nowrap">
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('admin.usuario_editar', item_id=item.id) }}">Editar</a>
+            {% if item.id != admin_user.id %}
+            <form method="post" action="{{ url_for('admin.usuario_eliminar', item_id=item.id) }}" style="display:inline;" onsubmit="return confirm('¿Eliminar el usuario {{ item.email }}?');">
+              <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+              <button class="btn btn-danger btn-sm" type="submit">Eliminar</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><strong>Sin usuarios</strong>Crea la primera cuenta operativa.</div>
+  {% endif %}
+</div>
+{% endblock %}

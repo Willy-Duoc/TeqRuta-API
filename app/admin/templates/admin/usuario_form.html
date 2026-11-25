@@ -1,0 +1,64 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ 'Editar' if editando else 'Nuevo' }} usuario{% endblock %}
+{% block crumb %}Usuarios / {{ 'Editar' if editando else 'Nuevo' }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ 'Editar usuario' if editando else 'Nuevo usuario' }}</h1>
+    <p>Los roles determinan el acceso a la app y al panel administrativo.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="{{ url_for('admin.usuarios') }}">Volver</a>
+  </div>
+</div>
+
+<div class="card" style="max-width:900px;">
+  <form class="card-pad" method="post" action="{{ url_for('admin.usuario_editar', item_id=item_id) if editando else url_for('admin.usuario_nuevo') }}">
+    <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+    <div class="form-grid">
+      <div class="field">
+        <label for="email">Correo</label>
+        <input id="email" name="email" type="email" value="{{ data.email }}" required>
+        {% if errors.get('email') %}<span class="error-text">{{ errors['email'] }}</span>{% endif %}
+      </div>
+      <div class="field">
+        <label for="nombre">Nombre completo</label>
+        <input id="nombre" name="nombre" type="text" value="{{ data.nombre }}" required>
+        {% if errors.get('nombre') %}<span class="error-text">{{ errors['nombre'] }}</span>{% endif %}
+      </div>
+      <div class="field">
+        <label for="rol">Rol</label>
+        <select id="rol" name="rol" required>
+          {% for valor in roles %}
+          <option value="{{ valor }}" {{ 'selected' if data.rol == valor else '' }}>{{ valor }}</option>
+          {% endfor %}
+        </select>
+        {% if errors.get('rol') %}<span class="error-text">{{ errors['rol'] }}</span>{% endif %}
+      </div>
+      <div class="field">
+        <label for="cargo">Cargo</label>
+        <input id="cargo" name="cargo" type="text" value="{{ data.cargo }}">
+      </div>
+      <div class="field">
+        <label for="vehiculoAsignado">Vehículo asignado</label>
+        <input id="vehiculoAsignado" name="vehiculoAsignado" type="text" value="{{ data.vehiculoAsignado }}" placeholder="HK-8932">
+      </div>
+      <div class="field">
+        <label for="password">{{ 'Nueva contraseña (opcional)' if editando else 'Contraseña' }}</label>
+        <input id="password" name="password" type="password" minlength="8" {{ '' if editando else 'required' }} autocomplete="new-password">
+        {% if errors.get('password') %}<span class="error-text">{{ errors['password'] }}</span>{% endif %}
+        <span class="small muted">Mínimo 8 caracteres.</span>
+      </div>
+      <label class="check full">
+        <input type="checkbox" name="activo" {{ 'checked' if data.activo else '' }}>
+        Usuario activo
+      </label>
+      {% if errors.get('activo') %}<span class="error-text full">{{ errors['activo'] }}</span>{% endif %}
+    </div>
+    <div class="form-actions">
+      <a class="btn btn-secondary" href="{{ url_for('admin.usuarios') }}">Cancelar</a>
+      <button class="btn btn-primary" type="submit">{{ 'Guardar cambios' if editando else 'Crear usuario' }}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

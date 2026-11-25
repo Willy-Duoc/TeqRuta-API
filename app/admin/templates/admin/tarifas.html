@@ -1,0 +1,122 @@
+{% extends "admin/base.html" %}
+{% block title %}Tarifas{% endblock %}
+{% block crumb %}Tarifas{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Tarifas de combustible</h1>
+    <p>Precio vigente, historial y sobreescritura manual ante fallas de la fuente externa.</p>
+  </div>
+  <div class="page-actions">
+    {% for tipo in combustibles %}
+    <a class="btn {{ 'btn-primary' if tipo == combustible else 'btn-secondary' }} btn-sm" href="{{ url_for('admin.tarifas', combustible=tipo) }}">{{ tipo }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="stack">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Tarifa vigente · {{ combustible }}</h2>
+          <p>Fuente y fecha de la última actualización.</p>
+        </div>
+        {% if activa %}<span class="badge {{ 'ok' if activa.origen == 'API_EXTERNA' else 'warn' }}">{{ activa.origen }}</span>{% endif %}
+      </div>
+      <div class="card-pad">
+        {% if activa %}
+        <div style="font-size:34px;font-weight:800;letter-spacing:-.03em;">{{ activa.precio_litro | clp }} <span class="muted" style="font-size:15px;font-weight:600;">CLP / litro</span></div>
+        <dl class="kv" style="margin-top:14px;">
+          <dt>Vigente desde</dt><dd>{{ activa.vigente_desde | fecha_hora }}</dd>
+          <dt>Fuente</dt><dd class="small">{{ activa.fuente or '—' }}</dd>
+          <dt>Detalle</dt><dd class="small">{{ activa.detalle or '—' }}</dd>
+        </dl>
+        {% else %}
+        <p class="muted">No hay tarifa activa para este combustible.</p>
+        {% endif %}
+
+        {% if es_admin %}
+        <div class="page-actions" style="margin-top:16px;">
+          <form method="post" action="{{ url_for('admin.tarifa_actualizar') }}">
+            <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+            <input type="hidden" name="combustible" value="{{ combustible }}">
+            <button class="btn btn-secondary" type="submit">Actualizar desde fuente externa</button>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if es_admin %}
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Sobreescritura manual</h2>
+          <p>Reemplaza la tarifa activa y deja registro del administrador.</p>
+        </div>
+      </div>
+      <form class="card-pad" method="post" action="{{ url_for('admin.tarifa_manual') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <div class="form-grid">
+          <div class="field">
+            <label for="combustible">Combustible</label>
+            <select id="combustible" name="combustible">
+              {% for tipo in combustibles %}
+              <option value="{{ tipo }}" {{ 'selected' if tipo == combustible else '' }}>{{ tipo }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="precioLitro">Precio (CLP / litro)</label>
+            <input id="precioLitro" name="precioLitro" type="number" step="0.01" min="1" max="10000000" value="{{ activa.precio_litro if activa else '' }}" required>
+          </div>
+          <div class="field full">
+            <label for="fuente">Motivo / fuente</label>
+            <input id="fuente" name="fuente" type="text" placeholder="Ej.: valor informado por gerencia" value="Overwrite manual (dashboard)">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">Guardar tarifa manual</button>
+        </div>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2>Historial · {{ combustible }}</h2>
+        <p>Últimos 50 registros.</p>
+      </div>
+    </div>
+    {% if historial %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Vigente desde</th>
+            <th class="num">Precio</th>
+            <th>Origen</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in historial %}
+          <tr>
+            <td class="small nowrap">{{ item.vigente_desde | fecha_hora }}</td>
+            <td class="num">{{ item.precio_litro | clp }}</td>
+            <td><span class="badge {{ 'ok' if item.origen == 'API_EXTERNA' else 'neutral' }}">{{ item.origen }}</span></td>
+            <td>{% if item.activa %}<span class="badge ok">Activa</span>{% else %}<span class="muted small">Histórica</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><strong>Sin historial</strong>Actualiza la tarifa para crear el primer registro.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

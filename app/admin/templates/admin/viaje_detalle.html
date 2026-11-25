@@ -1,0 +1,159 @@
+{% extends "admin/base.html" %}
+{% block title %}Viaje {{ trip.uuid[:8] }}{% endblock %}
+{% block crumb %}Viajes / Detalle{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Detalle del viaje</h1>
+    <p class="mono">{{ trip.uuid }}</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="{{ url_for('admin.viajes') }}">Volver</a>
+    {% if puede_aprobar and trip.estado_aprobacion == 'PENDIENTE' %}
+    <a class="btn btn-primary" href="#aprobacion">Aprobar u observar</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="stack">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>{{ trip.ruta_seleccionada }}</h2>
+          <p>{{ trip.hora_inicio | fecha_hora }} · {{ trip.tecnico_email }}</p>
+        </div>
+        <span class="badge {{ trip.estado_aprobacion | badge }}">{{ trip.estado_aprobacion }}</span>
+      </div>
+      <dl class="kv">
+        <dt>Vehículo</dt><dd>{{ trip.vehiculo_patente }}</dd>
+        <dt>Técnico</dt><dd>{{ trip.tecnico_email }}</dd>
+        <dt>Inicio</dt><dd>{{ trip.hora_inicio | fecha_hora }}</dd>
+        <dt>Fin</dt><dd>{{ trip.hora_fin | fecha_hora }}</dd>
+        <dt>Odómetro inicio / fin</dt><dd>{{ trip.odometro_inicio }} km → {{ trip.odometro_fin }} km</dd>
+        <dt>Distancia declarada</dt><dd>{{ trip.distancia_declarada_km }} km</dd>
+        <dt>Distancia oficial</dt><dd>{{ trip.distancia_oficial_km if trip.distancia_oficial_km is not none else 'Sin destino oficial' }}{% if trip.distancia_oficial_km is not none %} km{% endif %}</dd>
+        <dt>Desviación</dt>
+        <dd>
+          {% if trip.desviacion_porcentaje is not none %}
+          <span class="{{ 'error-text' if trip.alerta_desviacion else '' }}">{{ '%+.2f' | format(trip.desviacion_porcentaje) }}%</span>
+          {% if trip.alerta_desviacion %}<span class="badge danger" style="margin-left:8px;"><span class="dot"></span> Alerta</span>{% endif %}
+          {% else %}—{% endif %}
+        </dd>
+        <dt>Sincronizado</dt><dd>{{ 'Sí' if trip.sincronizado else 'No' }}</dd>
+        <dt>Observación de jefatura</dt><dd>{{ trip.observacion_jefe or 'Sin observaciones' }}</dd>
+        <dt>Eventos extra</dt><dd>{{ trip.eventos_extra or '—' }}</dd>
+        <dt>Fotos odómetro</dt>
+        <dd>
+          Inicio: {{ trip.foto_odometro_inicio or '—' }}<br>
+          Fin: {{ trip.foto_odometro_fin or '—' }}<br>
+          Peajes: {{ trip.fotos_peajes or '—' }}
+        </dd>
+        <dt>Ubicación inicio</dt>
+        <dd>
+          {% if trip.latitud_inicio is not none and trip.longitud_inicio is not none %}
+          <a href="https://www.google.com/maps?q={{ trip.latitud_inicio }},{{ trip.longitud_inicio }}" target="_blank" rel="noopener">{{ trip.latitud_inicio }}, {{ trip.longitud_inicio }}</a>
+          {% else %}—{% endif %}
+        </dd>
+        <dt>Ubicación fin</dt>
+        <dd>
+          {% if trip.latitud_fin is not none and trip.longitud_fin is not none %}
+          <a href="https://www.google.com/maps?q={{ trip.latitud_fin }},{{ trip.longitud_fin }}" target="_blank" rel="noopener">{{ trip.latitud_fin }}, {{ trip.longitud_fin }}</a>
+          {% else %}—{% endif %}
+        </dd>
+        <dt>Creado / actualizado</dt><dd>{{ trip.created_at | fecha_hora }} · {{ trip.updated_at | fecha_hora }}</dd>
+      </dl>
+    </div>
+
+    {% if puede_aprobar %}
+    <div class="card" id="aprobacion">
+      <div class="card-head">
+        <div>
+          <h2>Aprobación de jefatura</h2>
+          <p>La decisión notifica al técnico y queda registrada en el viaje.</p>
+        </div>
+      </div>
+      <form class="card-pad" method="post" action="{{ url_for('admin.viaje_aprobar', uuid=trip.uuid) }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <div class="form-grid">
+          <div class="field">
+            <label for="estado">Nueva decisión</label>
+            <select id="estado" name="estado" required>
+              <option value="APROBADO" {{ 'selected' if trip.estado_aprobacion == 'APROBADO' else '' }}>Aprobar</option>
+              <option value="OBSERVADO" {{ 'selected' if trip.estado_aprobacion == 'OBSERVADO' else '' }}>Observar</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label for="observacionJefe">Observación (obligatoria al observar)</label>
+            <textarea id="observacionJefe" name="observacionJefe" placeholder="Motivo de la observación o comentario de aprobación">{{ trip.observacion_jefe or '' }}</textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">Guardar decisión</button>
+        </div>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Costos calculados</h2>
+          <p>Motor centralizado de la API.</p>
+        </div>
+      </div>
+      <div class="card-pad">
+        <div style="font-size:30px;font-weight:800;letter-spacing:-.03em;">{{ trip.costo_total_calculado | clp }}</div>
+        <p class="small muted">Costo total del viaje</p>
+        <dl class="kv">
+          <dt>Combustible</dt><dd>{{ trip.costo_combustible_estimado | clp }}</dd>
+          <dt>Peajes</dt><dd>{{ trip.total_monto_peajes | clp }}</dd>
+          <dt>Rendimiento</dt><dd>{{ trip.rendimiento_usado_km_l }} km/L</dd>
+          <dt>Tarifa usada</dt><dd>{{ trip.tarifa_usada_clp_l | clp }} / L</dd>
+          <dt>Origen tarifa</dt><dd>{{ trip.fuente_tarifa }}</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Notificaciones</h2>
+          <p>Mensajes generados para el técnico.</p>
+        </div>
+      </div>
+      {% if notificaciones %}
+      <div class="card-pad stack" style="gap:10px;">
+        {% for nota in notificaciones %}
+        <div style="border-left:3px solid var(--primary);padding-left:10px;">
+          <div class="small"><strong>{{ nota.tipo }}</strong> · {{ nota.created_at | fecha_hora }}</div>
+          <div class="small muted">{{ nota.mensaje }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty" style="padding:24px;"><span class="muted small">Sin notificaciones todavía.</span></div>
+      {% endif %}
+    </div>
+
+    {% if es_admin %}
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Zona de administración</h2>
+          <p>Esta acción no se puede deshacer.</p>
+        </div>
+      </div>
+      <div class="card-pad">
+        <form method="post" action="{{ url_for('admin.viaje_eliminar', uuid=trip.uuid) }}" onsubmit="return confirm('¿Eliminar definitivamente el viaje {{ trip.uuid }}?');">
+          <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+          <button class="btn btn-danger" type="submit">Eliminar viaje</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

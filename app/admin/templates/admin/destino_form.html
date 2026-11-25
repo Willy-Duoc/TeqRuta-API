@@ -1,0 +1,61 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ 'Editar' if editando else 'Nuevo' }} destino{% endblock %}
+{% block crumb %}Destinos / {{ 'Editar' if editando else 'Nuevo' }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ 'Editar destino' if editando else 'Nuevo destino' }}</h1>
+    <p>La distancia oficial se usa para detectar desviaciones en los viajes.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="{{ url_for('admin.destinos') }}">Volver</a>
+  </div>
+</div>
+
+<div class="card" style="max-width:900px;">
+  <form class="card-pad" method="post" action="{{ url_for('admin.destino_editar', item_id=item_id) if editando else url_for('admin.destino_nuevo') }}">
+    <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+    <div class="form-grid">
+      <div class="field full">
+        <label for="nombre">Nombre del destino</label>
+        <input id="nombre" name="nombre" type="text" value="{{ data.nombre }}" required>
+        {% if errors.get('nombre') %}<span class="error-text">{{ errors['nombre'] }}</span>{% endif %}
+      </div>
+      <div class="field">
+        <label for="region">Región</label>
+        <input id="region" name="region" type="text" value="{{ data.region }}">
+      </div>
+      <div class="field">
+        <label for="comuna">Comuna</label>
+        <input id="comuna" name="comuna" type="text" value="{{ data.comuna }}">
+      </div>
+      <div class="field">
+        <label for="distanciaOficialKm">Distancia oficial (km)</label>
+        <input id="distanciaOficialKm" name="distanciaOficialKm" type="number" step="0.1" min="0.1" max="5000" value="{{ data.distanciaOficialKm }}" required>
+        {% if errors.get('distanciaOficialKm') %}<span class="error-text">{{ errors['distanciaOficialKm'] }}</span>{% endif %}
+      </div>
+      <div class="field">
+        <label for="activo">Estado</label>
+        <label class="check" style="height:39px;">
+          <input type="checkbox" name="activo" {{ 'checked' if data.activo else '' }}>
+          Destino activo
+        </label>
+      </div>
+      <div class="field">
+        <label for="latitud">Latitud (opcional)</label>
+        <input id="latitud" name="latitud" type="number" step="0.000001" min="-90" max="90" value="{{ data.latitud }}">
+        {% if errors.get('latitud') %}<span class="error-text">{{ errors['latitud'] }}</span>{% endif %}
+      </div>
+      <div class="field">
+        <label for="longitud">Longitud (opcional)</label>
+        <input id="longitud" name="longitud" type="number" step="0.000001" min="-180" max="180" value="{{ data.longitud }}">
+        {% if errors.get('longitud') %}<span class="error-text">{{ errors['longitud'] }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="form-actions">
+      <a class="btn btn-secondary" href="{{ url_for('admin.destinos') }}">Cancelar</a>
+      <button class="btn btn-primary" type="submit">{{ 'Guardar cambios' if editando else 'Crear destino' }}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

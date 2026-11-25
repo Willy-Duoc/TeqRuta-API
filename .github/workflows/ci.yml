@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    name: Pruebas (${{ matrix.bd }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - bd: sqlite
+            database_url: sqlite:///:memory:
+          - bd: postgresql
+            database_url: postgresql+psycopg://teqruta:teqruta@127.0.0.1:5432/teqruta_test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: teqruta
+          POSTGRES_PASSWORD: teqruta
+          POSTGRES_DB: teqruta_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U teqruta -d teqruta_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: ${{ matrix.database_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Ejecutar pruebas
+        run: python -m pytest
+
+  docker:
+    name: Validar Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generar .env.production con secretos aleatorios
+        run: python3 scripts/preparar_env_produccion.py
+
+      - name: Generar certificados autofirmados de prueba
+        run: bash deploy/generar_certificado.sh localhost
+
+      - name: Validar la configuración del stack
+        run: docker compose --env-file .env.production config --quiet

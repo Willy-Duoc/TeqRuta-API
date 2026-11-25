@@ -1,0 +1,110 @@
+{% extends "admin/base.html" %}
+{% block title %}Reportes{% endblock %}
+{% block crumb %}Reportes{% endblock %}
+{% macro tabla_grupos(titulo, filas) %}
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>{{ titulo }}</h2>
+      <p>Viajes aprobados en el período.</p>
+    </div>
+  </div>
+  {% if filas %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Grupo</th>
+          <th class="num">Viajes</th>
+          <th class="num">Distancia</th>
+          <th class="num">Costo total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fila in filas %}
+        <tr>
+          <td><strong>{{ fila.grupo }}</strong></td>
+          <td class="num">{{ fila.viajes }}</td>
+          <td class="num">{{ fila.distanciaKm }} km</td>
+          <td class="num">{{ fila.costoTotal | clp }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty" style="padding:24px;"><span class="muted small">Sin viajes aprobados en el período.</span></div>
+  {% endif %}
+</div>
+{% endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Reportes financieros</h1>
+    <p>Costos aprobados por período, cliente, técnico y vehículo.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-primary" href="{{ url_for('admin.reportes_csv', **args) }}">Exportar CSV</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <form class="filters" method="get" action="{{ url_for('admin.reportes') }}">
+    <div class="field">
+      <label for="anio">Año</label>
+      <select id="anio" name="anio">
+        <option value="">Todos</option>
+        {% for anio in anios %}
+        <option value="{{ anio }}" {{ 'selected' if args.anio == anio|string else '' }}>{{ anio }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="mes">Mes</label>
+      <select id="mes" name="mes">
+        <option value="">Todos</option>
+        {% for numero, nombre in meses %}
+        <option value="{{ numero }}" {{ 'selected' if args.mes == numero|string else '' }}>{{ nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field grow">
+      <label for="cliente">Cliente / ruta</label>
+      <input id="cliente" name="cliente" type="text" value="{{ args.cliente }}" placeholder="Filtrar por texto de la ruta">
+    </div>
+    <button class="btn btn-primary" type="submit">Aplicar</button>
+    <a class="btn btn-ghost" href="{{ url_for('admin.reportes') }}">Mes actual</a>
+  </form>
+</div>
+
+<div class="stats">
+  <div class="stat">
+    <div class="label">Viajes aprobados</div>
+    <div class="value">{{ resumen.resumen.viajesAprobados }}</div>
+    <div class="hint">{{ resumen.resumen.distanciaTotalKm }} km declarados</div>
+  </div>
+  <div class="stat ok">
+    <div class="label">Costo total</div>
+    <div class="value">{{ resumen.resumen.costoTotal | clp }}</div>
+    <div class="hint">{{ resumen.resumen.moneda }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Combustible</div>
+    <div class="value">{{ resumen.resumen.costoCombustible | clp }}</div>
+    <div class="hint">Peajes: {{ resumen.resumen.totalPeajes | clp }}</div>
+  </div>
+  <div class="stat warn">
+    <div class="label">Promedio por visita</div>
+    <div class="value">{{ resumen.resumen.promedioPorVisita | clp }}</div>
+    <div class="hint">Solo viajes aprobados</div>
+  </div>
+</div>
+
+<div class="stack">
+  {{ tabla_grupos('Por cliente / ruta', resumen.porCliente) }}
+  <div class="grid-2">
+    {{ tabla_grupos('Por técnico', resumen.porTecnico) }}
+    {{ tabla_grupos('Por vehículo', resumen.porVehiculo) }}
+  </div>
+</div>
+{% endblock %}

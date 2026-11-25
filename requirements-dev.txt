@@ -1,2 +1,4 @@
--r requirements.txt
+# Dependencias de desarrollo y pruebas.
+# Incluye producción para validar gunicorn y PostgreSQL en local/CI.
+-r requirements-prod.txt
 pytest>=8.0,<9.0

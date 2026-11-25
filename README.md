@@ -8,6 +8,10 @@ mantenedores de flota/destinos/tarifas y tarifas de combustible.
 Se publica al dispositivo mediante **Ngrok**: Flask queda escuchando solo en
 `127.0.0.1:5000` y el túnel entrega una URL **HTTPS** sin exponer el puerto interno.
 
+Además del API móvil incluye un **panel administrativo web** (`/admin`), un
+**stack de producción** con PostgreSQL + Gunicorn + Nginx (Docker Compose) y
+**Sentry** opcional para el registro de errores.
+
 - **Repositorio de esta API:** <https://github.com/Willy-Duoc/TeqRuta-API>
 - **Repositorio de la app:** <https://github.com/hanspwd/TeqRuta>
 - **Documento de integración de la app:** [`TeqRuta/docs/PREPARACION_API.md`](https://github.com/hanspwd/TeqRuta/blob/master/docs/PREPARACION_API.md)
@@ -123,6 +127,9 @@ Cierra Ngrok y el Flask iniciado por el script. No borra la base de datos ni el 
 | API | Flask 3 + Blueprints | Auth, viajes, reportes y mantenedores |
 | Persistencia | SQLAlchemy (SQLite/PostgreSQL) | Usuarios, flota, destinos, tarifas, viajes |
 | Seguridad | JWT + Bcrypt + RBAC | Token por petición y permisos por rol |
+| Panel web | Flask + Jinja2 + sesión/CSRF | Dashboard: viajes, aprobaciones, flota, usuarios, tarifas y reportes |
+| Observabilidad | Sentry (opcional) | Registro de errores en producción |
+| Despliegue | Docker Compose + Gunicorn + Nginx | PostgreSQL, TLS y workers WSGI |
 | Externo | Precio de combustible (CNE/AhorraHogar) | Tarifa diaria con *fallback* |
 
 ### Blueprints y módulos
@@ -134,10 +141,12 @@ app/
 ├── viajes/              # /api/viajes
 ├── reportes/            # /api/reportes
 ├── mantenedores/        # /api/mantenedores
-├── services/            # costos + precio de combustible
+├── admin/               # /admin: panel web (rutas + plantillas Jinja)
+├── services/            # costos, combustible, reportes y aprobaciones
 ├── models.py            # entidades SQLAlchemy
 ├── serializers.py       # JSON camelCase para Kotlin
 ├── security.py          # JWT, Bcrypt y decoradores RBAC
+├── observability.py     # inicialización opcional de Sentry
 ├── seed.py              # datos demo
 ├── config.py            # configuración por entorno
 └── errors.py            # respuestas JSON uniformes
@@ -170,24 +179,36 @@ TeqRuta-API/
 │   ├── viajes/              # sync, CRUD y aprobación
 │   ├── reportes/            # métricas, desviaciones y CSV
 │   ├── mantenedores/        # vehículos, destinos, usuarios y tarifas
-│   ├── services/            # cálculo de costos y combustible
+│   ├── admin/               # panel web: rutas + plantillas Jinja
+│   ├── services/            # costos, combustible, reportes y aprobaciones
 │   ├── api.py               # health e índice
 │   ├── config.py            # variables de entorno
+│   ├── observability.py     # Sentry opcional
 │   ├── models.py            # SQLAlchemy
 │   ├── security.py          # JWT/Bcrypt/RBAC
 │   ├── seed.py              # datos demo
 │   └── serializers.py
+├── deploy/
+│   ├── nginx.conf           # TLS + proxy a Gunicorn
+│   └── generar_certificado.sh
 ├── scripts/
 │   ├── tunel.py             # orquesta Flask + Ngrok + URL de la app
 │   ├── instalar_ngrok.sh    # descarga el agente en .tools/
-│   └── preparar_env.py      # genera .env con secretos aleatorios
+│   ├── preparar_env.py      # genera .env con secretos aleatorios
+│   └── preparar_env_produccion.py  # genera .env.production
 ├── tests/                   # pytest (sin red)
-├── Makefile                 # setup, test, publicar, smoke, detener
+├── .github/workflows/       # CI: pruebas (SQLite/PostgreSQL) y Docker Compose
+├── Dockerfile               # imagen de producción (Gunicorn, usuario sin privilegios)
+├── docker-compose.yml       # PostgreSQL + API + Nginx
+├── gunicorn.conf.py         # workers, timeouts y logs
+├── Makefile                 # setup, test, publicar, smoke, prod-*
 ├── run.py                   # servidor de desarrollo
 ├── wsgi.py                  # entrada para Gunicorn
-├── requirements.txt
-├── requirements-dev.txt
-└── .env.example
+├── requirements.txt         # base (incluye sentry-sdk)
+├── requirements-prod.txt    # gunicorn + psycopg
+├── requirements-dev.txt     # producción + pytest
+├── .env.example
+└── .env.production.example
 ```
 
 Archivos **no versionados**: `.env`, `.venv/`, `.tools/`, `.run/`, `.ngrok-url`,
@@ -315,6 +336,9 @@ pip install "psycopg[binary]"
 # .env
 DATABASE_URL=postgresql+psycopg://usuario:clave@host:5432/teqruta
 ```
+
+Para el despliegue completo (PostgreSQL + Gunicorn + Nginx con Docker Compose) usa los
+comandos `make prod-*` descritos en la [sección 15](#15-despliegue-de-producción-postgresql--gunicorn--nginx).
 
 ---
 
@@ -566,12 +590,126 @@ rendimiento y distancia oficial para auditoría.
 
 ---
 
-## 12. Pruebas
+## 12. Panel administrativo web
+
+Además del API JSON, la aplicación sirve un **dashboard administrativo** en
+`/admin` (Jinja2 + CSS embebido, sin build de frontend). Reutiliza los mismos
+modelos y servicios que el API móvil para que los números coincidan.
+
+```text
+http(s)://<host>/admin/          # Resumen operativo (KPIs y viajes recientes)
+http(s)://<host>/admin/login     # Ingreso con usuario del API
+```
+
+| Módulo | Ruta | Roles |
+|---|---|---|
+| Resumen operativo | `/admin/` | admin, jefe, gerencia |
+| Viajes y aprobación | `/admin/viajes`, `/admin/viajes/<uuid>` | admin, jefe, gerencia (aprobar: admin/jefe) |
+| Vehículos | `/admin/vehiculos` | admin |
+| Destinos | `/admin/destinos` | admin |
+| Usuarios | `/admin/usuarios` | admin |
+| Tarifas | `/admin/tarifas` | admin |
+| Reportes y CSV | `/admin/reportes`, `/admin/reportes.csv` | admin, jefe, gerencia |
+
+Seguridad del panel:
+
+- sesión propia por cookie firmada (`SESSION_COOKIE_NAME`, HttpOnly, SameSite=Lax),
+  independiente del JWT de la app móvil;
+- **token CSRF** obligatorio en cada `POST` (validado con comparación en tiempo constante);
+- RBAC: `tecnico` no puede entrar; solo admin/jefe aprueban; solo admin administra;
+- cabeceras `no-store`, `X-Frame-Options: DENY` y `X-Robots-Tag: noindex`;
+- en producción se sirve por HTTPS y con `SESSION_COOKIE_SECURE=true`.
+
+---
+
+## 13. Registro de errores con Sentry
+
+Sentry es **opcional**: si `SENTRY_DSN` está vacío, el SDK no se inicializa y no se
+envía nada.
+
+### 13.1 API (Flask)
+
+Variables (`.env.production`): `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`,
+`SENTRY_TRACES_SAMPLE_RATE`, `SENTRY_SEND_DEFAULT_PII`. La inicialización está en
+`app/observability.py` con integración Flask + SQLAlchemy y
+`max_request_body_size="never"` (no adjunta cuerpos de petición).
+
+### 13.2 App Android
+
+El DSN se inyecta en `BuildConfig.SENTRY_DSN` (prioridad: `-PteqrutaSentryDsn`,
+`TEQRUTA_SENTRY_DSN`, `local.properties`). `TeqRutaApp` inicializa el SDK solo si hay
+DSN; el auto-init del manifest está desactivado para no arrancar sin configuración.
 
 ```bash
-make test        # pytest: 30 pruebas
-make smoke-local # E2E contra 127.0.0.1:5000
-make smoke       # 12 verificaciones E2E contra la URL pública
+cd ../TeqRuta
+./gradlew :app:assembleRelease -PteqrutaSentryDsn=https://public@o0.ingest.sentry.io/0
+```
+
+---
+
+## 14. Integración continua (CI)
+
+Ambos repositorios incluyen GitHub Actions en `.github/workflows/ci.yml`.
+
+- **TeqRuta-API**: `pytest` con matriz **SQLite** y **PostgreSQL 16** (servicio) más un
+  job que genera `.env.production` y valida `docker compose config`.
+- **TeqRuta**: pruebas unitarias (`:app:testDebugUnitTest`), `assembleDebug` y
+  `assembleRelease`; sube los APK como artefactos. El release queda **firmado** si se
+  definen los secretos `TEQRUTA_KEYSTORE_BASE64`, `TEQRUTA_KEYSTORE_PASSWORD`,
+  `TEQRUTA_KEY_ALIAS` y `TEQRUTA_KEY_PASSWORD`; si no, se genera sin firmar.
+
+Equivalentes locales:
+
+```bash
+make test            # SQLite en memoria
+make test-postgres   # PostgreSQL (TEST_DATABASE_URL)
+docker compose --env-file .env.production config --quiet
+```
+
+---
+
+## 15. Despliegue de producción (PostgreSQL + Gunicorn + Nginx)
+
+El stack de `docker-compose.yml` levanta tres servicios y **solo Nginx publica puertos**:
+
+```text
+Nginx (80/443, TLS) → API Gunicorn (interno 8000) → PostgreSQL 16 (interno 5432)
+```
+
+```bash
+make prod-env      # genera .env.production con SECRET_KEY, JWT y clave PostgreSQL
+make prod-cert     # certificado autofirmado para pruebas (o usa Let's Encrypt)
+make prod-config   # valida docker-compose.yml + .env.production
+make prod-up       # construye y levanta el stack en segundo plano
+make prod-init     # crea las tablas en PostgreSQL (sin datos demo)
+make prod-admin    # crea un administrador de forma interactiva
+make prod-logs     # sigue los logs
+make prod-down     # detiene el stack (conserva el volumen de datos)
+```
+
+Detalles relevantes:
+
+- `DATABASE_URL` se construye dentro de Docker como
+  `postgresql+psycopg://<user>:<pass>@db:5432/<db>`; el driver `psycopg[binary]` viene
+  en `requirements-prod.txt`.
+- La imagen usa `python:3.12-slim`, usuario sin privilegios y `HEALTHCHECK` contra
+  `/api/health`.
+- `gunicorn.conf.py` define workers `gthread`, timeouts y reciclado de workers.
+- Reemplaza `deploy/certs/*.pem` por un certificado real (Let's Encrypt) antes de
+  exponer el servicio; `deploy/certs/` está ignorado por Git.
+- Para una URL pública sin dominio propio puedes seguir usando Ngrok en lugar de Nginx
+  (`make publicar`), pero el portal de administración y PostgreSQL conviene exponerlos
+  solo por HTTPS.
+
+---
+
+## 16. Pruebas
+
+```bash
+make test          # pytest: 41 pruebas (SQLite en memoria)
+make test-postgres # la misma suite contra PostgreSQL
+make smoke-local   # E2E contra 127.0.0.1:5000
+make smoke         # 12 verificaciones E2E contra la URL pública
 ```
 
 Cobertura:
@@ -582,6 +720,9 @@ Cobertura:
 - aprobación/observación;
 - reportes y CSV;
 - mantenedores y tarifa manual;
+- panel web `/admin`: sesión, CSRF, RBAC, CRUD, aprobación y reportes;
+- configuración de producción: normalización de PostgreSQL y `Sentry` opcional;
+- CLI `init-db` y `create-admin`;
 - API externa de combustible simulada + fallback;
 - `ProxyFix` y cabeceras de seguridad;
 - lectura de URL pública, configuración de Ngrok, generación de `.env` y
@@ -593,7 +734,7 @@ HTTP real y elimina el viaje de prueba al terminar.
 
 ---
 
-## 13. Producción: checklist
+## 17. Producción: checklist
 
 - Generar `SECRET_KEY` y `JWT_SECRET_KEY` largos y únicos (`make setup` ya lo hace).
 - `SEED_DEMO_USERS=false`.
@@ -609,7 +750,7 @@ HTTP real y elimina el viaje de prueba al terminar.
 
 ---
 
-## 14. Solución de problemas
+## 18. Solución de problemas
 
 | Síntoma | Causa / solución |
 |---|---|
@@ -628,7 +769,7 @@ HTTP real y elimina el viaje de prueba al terminar.
 
 ---
 
-## 15. Contexto académico
+## 19. Contexto académico
 
 Proyecto de **Desarrollo de Aplicaciones Móviles (DSY1105)**, Escuela de Informática y
 Telecomunicaciones, Duoc UC, para TEQMED SpA.

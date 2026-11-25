@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import uuid as uuid_lib
-from datetime import datetime, timezone
 
 from flask import Blueprint, g, request
 
 from ..extensions import db
-from ..models import ESTADOS_APROBACION, Notification, Trip
+from ..models import ESTADOS_APROBACION, Trip
 from ..security import roles_required, token_required
 from ..serializers import trip_to_json
+from ..services.aprobaciones import aplicar_aprobacion
 from ..services.cost_calculator import calcular_costo
 from ..utils import (
     ApiError,
@@ -346,38 +346,10 @@ def update_approval(uuid: str):
 
     data = get_request_json()
     estado = str(data.get("estado") or data.get("estadoAprobacion") or "").strip().upper()
-    if estado == "RECHAZADO":
-        estado = "OBSERVADO"
-    if estado not in {"APROBADO", "OBSERVADO"}:
-        raise ApiError(
-            "estado debe ser APROBADO u OBSERVADO",
-            400,
-            "validation_error",
-        )
     observacion = str(
         data.get("observacionJefe") or data.get("observacion") or ""
     ).strip()
-    if estado == "OBSERVADO" and not observacion:
-        raise ApiError("Se requiere observacionJefe al observar un viaje", 400, "validation_error")
-
-    trip.estado_aprobacion = estado
-    trip.observacion_jefe = observacion
-    trip.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-
-    tipo = "VIAJE_APROBADO" if estado == "APROBADO" else "VIAJE_OBSERVADO"
-    mensaje = (
-        f"Tu viaje {trip.uuid} hacia {trip.ruta_seleccionada} fue aprobado."
-        if estado == "APROBADO"
-        else f"Tu viaje {trip.uuid} fue observado: {observacion}"
-    )
-    db.session.add(
-        Notification(
-            viaje_uuid=trip.uuid,
-            destinatario=trip.tecnico_email,
-            tipo=tipo,
-            mensaje=mensaje,
-        )
-    )
+    aplicar_aprobacion(trip, estado, observacion)
     db.session.commit()
     return api_ok(trip_to_json(trip), "Estado de aprobación actualizado")
 
